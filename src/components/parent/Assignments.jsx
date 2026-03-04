@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { db } from "../../firebase";
 import { ref, update, remove } from "firebase/database";
 
@@ -15,16 +15,26 @@ const RECURRENCE = { once:"One-time", daily:"Daily", weekly:"Weekly", biweekly:"
 const fmt = (n) => `$${Number(n).toFixed(2)}`;
 const today = () => new Date().toISOString().slice(0,10);
 
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
 export default function Assignments({ kids, assignments }) {
   const [filterKid, setFilterKid] = useState("all");
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const isMobile = useIsMobile();
 
   const filtered = assignments
     .filter(a => filterKid === "all" || a.kidId === filterKid)
     .sort((a, b) => {
-      // Sort: incomplete first, then by due date
       if (a.completed !== b.completed) return a.completed ? 1 : -1;
       return a.dueDate > b.dueDate ? 1 : -1;
     });
@@ -59,18 +69,13 @@ export default function Assignments({ kids, assignments }) {
       <h2 style={{ margin:"0 0 20px", fontSize:22, color:"#1e1b4b" }}>Assignments</h2>
 
       {/* Filter bar */}
-      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:20 }}>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
         <FilterChip label="All Kids" active={filterKid==="all"} onClick={()=>setFilterKid("all")} />
         {kids.map(k => {
           const th = THEMES[k.theme]||THEMES.rose;
           return (
-            <FilterChip
-              key={k.id}
-              label={`${k.avatar} ${k.name}`}
-              active={filterKid===k.id}
-              onClick={()=>setFilterKid(k.id)}
-              theme={filterKid===k.id ? th : null}
-            />
+            <FilterChip key={k.id} label={`${k.avatar} ${k.name}`} active={filterKid===k.id}
+              onClick={()=>setFilterKid(k.id)} theme={filterKid===k.id ? th : null} />
           );
         })}
       </div>
@@ -91,54 +96,56 @@ export default function Assignments({ kids, assignments }) {
               return (
                 <div key={a.id} style={{ background:"#fff", borderRadius:14, border:`1px solid ${a.completed?"#e2e8f0":th.light}`, overflow:"hidden", opacity:a.paid?0.6:1 }}>
 
-                  {/* Card header */}
-                  <div style={{ display:"flex", alignItems:"center", padding:"14px 16px", gap:12 }}>
-                    {/* Status indicator */}
+                  {/* Top row — info */}
+                  <div style={{ display:"flex", alignItems:"center", padding:"14px 16px", gap:10 }}>
+                    {/* Status dot */}
                     <div style={{ width:12, height:12, borderRadius:"50%", flexShrink:0, background: a.paid?"#94a3b8":a.completed?"#16a34a":th.accent }} />
 
-                    {/* Kid avatar + name */}
-                    <div style={{ display:"flex", alignItems:"center", gap:6, minWidth:80 }}>
+                    {/* Kid */}
+                    <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0, minWidth:70 }}>
                       <span style={{ fontSize:18 }}>{kid?.avatar||"👤"}</span>
                       <span style={{ fontSize:12, color:th.text, fontWeight:600 }}>{kid?.name}</span>
                     </div>
 
-                    {/* Job info */}
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:600, color:"#1e293b", fontSize:15 }}>{a.title}</div>
-                      <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>
-                        Due {a.dueDate} · {RECURRENCE[a.recurrence]||a.recurrence}
-                        {a.completed && <span style={{ color:"#16a34a", marginLeft:8 }}>✓ Completed {a.completedDate}</span>}
-                        {a.paid      && <span style={{ color:"#94a3b8", marginLeft:8 }}>💰 Paid</span>}
+                    {/* Job title + meta */}
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontWeight:600, color:"#1e293b", fontSize:14 }}>{a.title}</div>
+                      <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
+                        {a.dueDate} · {RECURRENCE[a.recurrence]||a.recurrence}
                       </div>
+                      {a.completed && <div style={{ fontSize:11, color:"#16a34a", marginTop:2 }}>✓ Completed {a.completedDate}</div>}
+                      {a.paid      && <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>💰 Paid</div>}
                     </div>
 
-                    {/* Value */}
-                    <div style={{ fontWeight:700, color:a.completed?"#16a34a":th.accent, fontSize:16, minWidth:52, textAlign:"right" }}>
+                    {/* Value — always visible */}
+                    <div style={{ fontWeight:700, color:a.completed?"#16a34a":th.accent, fontSize:16, flexShrink:0 }}>
                       {fmt(a.value)}
                     </div>
-
-                    {/* Action buttons — hidden if paid */}
-                    {!a.paid && (
-                      <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                        {!a.completed && (
-                          <ActionBtn color="#dcfce7" textColor="#16a34a" onClick={()=>markComplete(a.id)}>✓ Done</ActionBtn>
-                        )}
-                        <ActionBtn color="#ede9fe" textColor="#7c3aed" onClick={()=>isEditing?setEditingId(null):startEdit(a)}>
-                          {isEditing ? "Cancel" : "Edit"}
-                        </ActionBtn>
-                        <ActionBtn color="#fee2e2" textColor="#dc2626" onClick={()=>setConfirmDeleteId(isConfirmingDelete?null:a.id)}>
-                          {isConfirmingDelete ? "Cancel" : "Delete"}
-                        </ActionBtn>
-                      </div>
-                    )}
                   </div>
+
+                  {/* Action buttons row — full width on mobile, only shown if not paid */}
+                  {!a.paid && (
+                    <div style={{ display:"flex", gap:8, padding:"0 16px 14px", flexWrap:"nowrap" }}>
+                      {!a.completed && (
+                        <ActionBtn color="#dcfce7" textColor="#16a34a" onClick={()=>markComplete(a.id)} flex>
+                          ✓ Mark Done
+                        </ActionBtn>
+                      )}
+                      <ActionBtn color="#ede9fe" textColor="#7c3aed" onClick={()=>isEditing?setEditingId(null):startEdit(a)} flex>
+                        {isEditing ? "Cancel Edit" : "✏️ Edit"}
+                      </ActionBtn>
+                      <ActionBtn color="#fee2e2" textColor="#dc2626" onClick={()=>setConfirmDeleteId(isConfirmingDelete?null:a.id)} flex>
+                        {isConfirmingDelete ? "Cancel" : "🗑 Delete"}
+                      </ActionBtn>
+                    </div>
+                  )}
 
                   {/* Confirm delete */}
                   {isConfirmingDelete && (
-                    <div style={{ padding:"10px 16px", background:"#fff5f5", borderTop:"1px solid #fee2e2", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
-                      <span style={{ fontSize:13, color:"#dc2626" }}>Are you sure you want to delete this assignment?</span>
+                    <div style={{ padding:"10px 16px 14px", borderTop:"1px solid #fee2e2", background:"#fff5f5", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10 }}>
+                      <span style={{ fontSize:13, color:"#dc2626" }}>Delete this assignment?</span>
                       <button onClick={()=>deleteAssignment(a.id)}
-                        style={{ padding:"6px 16px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontFamily:"Georgia,serif", fontWeight:600, cursor:"pointer", fontSize:13 }}>
+                        style={{ padding:"6px 16px", borderRadius:8, border:"none", background:"#dc2626", color:"#fff", fontFamily:"Georgia,serif", fontWeight:600, cursor:"pointer", fontSize:13, flexShrink:0 }}>
                         Yes, Delete
                       </button>
                     </div>
@@ -147,7 +154,7 @@ export default function Assignments({ kids, assignments }) {
                   {/* Edit form */}
                   {isEditing && (
                     <div style={{ padding:"16px", borderTop:`1px solid ${th.light}`, background:th.bg, display:"flex", flexDirection:"column", gap:10 }}>
-                      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+                      <div style={{ display:"grid", gridTemplateColumns: isMobile?"1fr":"1fr 1fr", gap:10 }}>
                         <div>
                           <label style={{ fontSize:11, fontWeight:600, color:"#64748b", display:"block", marginBottom:3 }}>TITLE</label>
                           <input value={editForm.title} onChange={e=>setEditForm(f=>({...f,title:e.target.value}))}
@@ -191,20 +198,19 @@ export default function Assignments({ kids, assignments }) {
   );
 }
 
-// ── Small reusable pieces ─────────────────────────────────────────────────────
 function FilterChip({ label, active, onClick, theme }) {
   return (
     <button onClick={onClick}
-      style={{ padding:"7px 16px", borderRadius:20, border:`2px solid ${active&&theme?theme.accent:active?"#4f46e5":"#e2e8f0"}`, background:active&&theme?theme.card:active?"#ede9fe":"#fff", cursor:"pointer", fontFamily:"Georgia,serif", fontWeight:active?700:400, color:active&&theme?theme.text:active?"#4f46e5":"#64748b", fontSize:13, transition:"all .15s" }}>
+      style={{ padding:"7px 16px", borderRadius:20, border:`2px solid ${active&&theme?theme.accent:active?"#4f46e5":"#e2e8f0"}`, background:active&&theme?theme.card:active?"#ede9fe":"#fff", cursor:"pointer", fontFamily:"Georgia,serif", fontWeight:active?700:400, color:active&&theme?theme.text:active?"#4f46e5":"#64748b", fontSize:13 }}>
       {label}
     </button>
   );
 }
 
-function ActionBtn({ children, color, textColor, onClick }) {
+function ActionBtn({ children, color, textColor, onClick, flex }) {
   return (
     <button onClick={onClick}
-      style={{ padding:"5px 10px", borderRadius:6, border:"none", background:color, color:textColor, cursor:"pointer", fontSize:12, fontFamily:"Georgia,serif", fontWeight:600, whiteSpace:"nowrap" }}>
+      style={{ flex: flex ? 1 : "none", padding:"8px 12px", borderRadius:8, border:"none", background:color, color:textColor, cursor:"pointer", fontSize:13, fontFamily:"Georgia,serif", fontWeight:600, textAlign:"center" }}>
       {children}
     </button>
   );
@@ -214,7 +220,6 @@ function SummaryBar({ assignments }) {
   const pending   = assignments.filter(a=>!a.completed).length;
   const completed = assignments.filter(a=>a.completed&&!a.paid).length;
   const paid      = assignments.filter(a=>a.paid).length;
-
   return (
     <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
       {[
