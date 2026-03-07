@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { db } from "../../firebase";
-import { ref, push, update, remove } from "firebase/database";
+import { addMember, updateMember, deleteMember } from "../../firestoreHelpers";
 
 const THEMES = {
   rose:    { bg:"#fff0f3", card:"#ffe4ea", accent:"#e11d48", light:"#fda4af", text:"#881337", grad:"linear-gradient(135deg,#fda4af,#e11d48)" },
@@ -21,12 +20,28 @@ export default function FamilyManager({ kids }) {
   const save = async () => {
     if (!form.name) return;
     if (editing) {
-      await update(ref(db, `kids/${editing}`), form);
+      // NEW: updateMember takes the member ID and fields to update
+      await updateMember(editing, {
+        name: form.name,
+        theme: form.theme,
+        avatar: form.avatar
+      });
       setEditing(null);
     } else {
-      await push(ref(db, "kids"), form);
+      // NEW: addMember creates a new document in the members subcollection
+      await addMember({
+        name: form.name,
+        role: "child",
+        theme: form.theme,
+        avatar: form.avatar,
+        age: null
+      });
     }
     setForm(blank);
+  };
+
+  const handleDelete = async (kidId) => {
+    await deleteMember(kidId);
   };
 
   return (
@@ -37,14 +52,14 @@ export default function FamilyManager({ kids }) {
         <h3 style={{ margin:"0 0 14px", fontSize:16 }}>{editing ? "Edit Kid" : "Add Kid"}</h3>
 
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>NAME *</label>
-        <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Kid's name"
+        <input value={form.name} onChange={e => setForm(f => ({ ...f, name:e.target.value }))} placeholder="Kid's name"
           style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14, boxSizing:"border-box", marginBottom:10 }} />
 
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:6 }}>AVATAR</label>
         <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginBottom:12 }}>
           {AVATAR_OPTIONS.map(a => (
-            <button key={a} onClick={()=>setForm(f=>({...f,avatar:a}))}
-              style={{ fontSize:24, padding:"4px 8px", borderRadius:8, border:`2px solid ${form.avatar===a?"#4f46e5":"#e2e8f0"}`, background:form.avatar===a?"#ede9fe":"#fff", cursor:"pointer" }}>
+            <button key={a} onClick={() => setForm(f => ({ ...f, avatar:a }))}
+              style={{ fontSize:24, padding:"4px 8px", borderRadius:8, border:`2px solid ${form.avatar === a ? "#4f46e5" : "#e2e8f0"}`, background:form.avatar === a ? "#ede9fe" : "#fff", cursor:"pointer" }}>
               {a}
             </button>
           ))}
@@ -55,8 +70,8 @@ export default function FamilyManager({ kids }) {
           {THEME_NAMES.map(t => {
             const th = THEMES[t];
             return (
-              <button key={t} onClick={()=>setForm(f=>({...f,theme:t}))}
-                style={{ padding:"6px 14px", borderRadius:20, border:`2px solid ${form.theme===t?th.accent:th.light}`, background:form.theme===t?th.card:th.bg, cursor:"pointer", color:th.text, fontSize:12, fontWeight:form.theme===t?700:400, fontFamily:"Georgia,serif" }}>
+              <button key={t} onClick={() => setForm(f => ({ ...f, theme:t }))}
+                style={{ padding:"6px 14px", borderRadius:20, border:`2px solid ${form.theme === t ? th.accent : th.light}`, background:form.theme === t ? th.card : th.bg, cursor:"pointer", color:th.text, fontSize:12, fontWeight:form.theme === t ? 700 : 400, fontFamily:"Georgia,serif" }}>
                 {t}
               </button>
             );
@@ -69,7 +84,7 @@ export default function FamilyManager({ kids }) {
             {editing ? "Update" : "Add Kid"}
           </button>
           {editing && (
-            <button onClick={()=>{setEditing(null);setForm(blank);}}
+            <button onClick={() => { setEditing(null); setForm(blank); }}
               style={{ padding:"9px 20px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", fontFamily:"Georgia,serif", cursor:"pointer" }}>
               Cancel
             </button>
@@ -87,9 +102,9 @@ export default function FamilyManager({ kids }) {
                 <span style={{ color:"#fff", fontWeight:700, fontSize:16 }}>{k.name}</span>
               </div>
               <div style={{ padding:"10px 12px", display:"flex", gap:6 }}>
-                <button onClick={()=>{setEditing(k.id);setForm({name:k.name,theme:k.theme,avatar:k.avatar});}}
+                <button onClick={() => { setEditing(k.id); setForm({ name:k.name, theme:k.theme, avatar:k.avatar }); }}
                   style={{ flex:1, padding:"6px", borderRadius:6, border:"1px solid #e2e8f0", background:"#f8fafc", cursor:"pointer", fontSize:12 }}>Edit</button>
-                <button onClick={()=>remove(ref(db,`kids/${k.id}`))}
+                <button onClick={() => handleDelete(k.id)}
                   style={{ flex:1, padding:"6px", borderRadius:6, border:"none", background:"#fee2e2", color:"#dc2626", cursor:"pointer", fontSize:12 }}>Remove</button>
               </div>
             </div>

@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { db } from "../../firebase";
-import { ref, push } from "firebase/database";
+import { createAssignment } from "../../firestoreHelpers";
 
 const THEMES = {
   rose:    { bg:"#fff0f3", card:"#ffe4ea", accent:"#e11d48", light:"#fda4af", text:"#881337", grad:"linear-gradient(135deg,#fda4af,#e11d48)" },
@@ -12,7 +11,46 @@ const THEMES = {
 };
 
 const RECURRENCE = { once:"One-time", daily:"Daily", weekly:"Weekly", biweekly:"Bi-weekly", monthly:"Monthly" };
-const today = () => new Date().toISOString().slice(0,10);
+const today = () => new Date().toISOString().slice(0, 10);
+
+// Convert the form's flat recurrence string + dueDate into the
+// structured recurrence object that Firestore expects
+function buildRecurrence(recurrenceType, dueDate) {
+  const base = {
+    type: recurrenceType || "once",
+    daysOfWeek: null,
+    dayOfMonth: null,
+    timeOfDay: null,
+    timeInferred: false
+  };
+
+  switch (recurrenceType) {
+    case "daily":
+      base.daysOfWeek = [0, 1, 2, 3, 4, 5, 6];
+      break;
+    case "weekly":
+      if (dueDate) {
+        const day = new Date(dueDate).getDay();
+        base.daysOfWeek = [day];
+      }
+      break;
+    case "biweekly":
+      if (dueDate) {
+        const day = new Date(dueDate).getDay();
+        base.daysOfWeek = [day]; // Same day, just less frequent
+      }
+      break;
+    case "monthly":
+      if (dueDate) {
+        base.dayOfMonth = new Date(dueDate).getDate();
+      }
+      break;
+    default:
+      base.type = "once";
+  }
+
+  return base;
+}
 
 export default function AssignJob({ kids, jobLibrary }) {
   const blank = { title:"", instructions:"", value:"", kidIds:[], recurrence:"once", dueDate:today(), fromLibrary:"" };
@@ -20,31 +58,32 @@ export default function AssignJob({ kids, jobLibrary }) {
   const [saved, setSaved] = useState(false);
 
   const pickLibrary = (id) => {
-    const j = jobLibrary.find(x=>x.id===id);
-    if (j) setForm(f=>({...f, fromLibrary:id, title:j.title, instructions:j.instructions||""}));
-    else   setForm(f=>({...f, fromLibrary:""}));
+    const j = jobLibrary.find(x => x.id === id);
+    if (j) setForm(f => ({ ...f, fromLibrary:id, title:j.title, instructions:j.instructions||"" }));
+    else   setForm(f => ({ ...f, fromLibrary:"" }));
   };
 
-  const toggleKid = (id) => setForm(f=>({
-    ...f, kidIds: f.kidIds.includes(id) ? f.kidIds.filter(x=>x!==id) : [...f.kidIds, id]
+  const toggleKid = (id) => setForm(f => ({
+    ...f, kidIds: f.kidIds.includes(id) ? f.kidIds.filter(x => x !== id) : [...f.kidIds, id]
   }));
 
   const submit = async () => {
     if (!form.title || form.kidIds.length === 0) return;
-    for (const kidId of form.kidIds) {
-      await push(ref(db, "assignments"), {
-        kidId,
-        title:        form.title,
-        instructions: form.instructions,
-        value:        Number(form.value) || 0,
-        recurrence:   form.recurrence,
-        dueDate:      form.dueDate,
-        completed:    false,
-        paid:         false,
-        completedDate: null,
-        createdDate:  today(),
-      });
-    }
+
+    // NEW: Instead of creating one RTDB record per kid with push(),
+    // we create one Firestore assignment with ALL selected kids in
+    // the assignees array. One chore, multiple assignees.
+    await createAssignment({
+      title:        form.title,
+      instructions: form.instructions,
+      assignees:    form.kidIds,
+      value:        Number(form.value) || 0,
+      category:     "uncategorized",
+      recurrence:   buildRecurrence(form.recurrence, form.dueDate),
+      createdBy:    "parent",
+      createdVia:   "form",
+    });
+
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     setForm(blank);
@@ -57,40 +96,40 @@ export default function AssignJob({ kids, jobLibrary }) {
       {/* Library picker */}
       <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"18px 20px", marginBottom:12 }}>
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>QUICK PICK FROM LIBRARY</label>
-        <select value={form.fromLibrary} onChange={e=>pickLibrary(e.target.value)}
+        <select value={form.fromLibrary} onChange={e => pickLibrary(e.target.value)}
           style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14 }}>
           <option value="">— start from scratch —</option>
-          {jobLibrary.map(j=><option key={j.id} value={j.id}>{j.title}</option>)}
+          {jobLibrary.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
         </select>
       </div>
 
       {/* Form */}
       <div style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"18px 20px" }}>
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>JOB TITLE *</label>
-        <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} placeholder="e.g. Vacuum Living Room"
+        <input value={form.title} onChange={e => setForm(f => ({ ...f, title:e.target.value }))} placeholder="e.g. Vacuum Living Room"
           style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14, boxSizing:"border-box", marginBottom:12 }} />
 
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>INSTRUCTIONS</label>
-        <textarea value={form.instructions} onChange={e=>setForm(f=>({...f,instructions:e.target.value}))} rows={3} placeholder="How to do this job…"
+        <textarea value={form.instructions} onChange={e => setForm(f => ({ ...f, instructions:e.target.value }))} rows={3} placeholder="How to do this job…"
           style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14, resize:"vertical", boxSizing:"border-box", marginBottom:12 }} />
 
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
           <div>
             <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>DOLLAR VALUE</label>
-            <input type="number" min="0" step="0.25" value={form.value} onChange={e=>setForm(f=>({...f,value:e.target.value}))} placeholder="0.00"
+            <input type="number" min="0" step="0.25" value={form.value} onChange={e => setForm(f => ({ ...f, value:e.target.value }))} placeholder="0.00"
               style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14, boxSizing:"border-box" }} />
           </div>
           <div>
             <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>DUE DATE</label>
-            <input type="date" value={form.dueDate} onChange={e=>setForm(f=>({...f,dueDate:e.target.value}))}
+            <input type="date" value={form.dueDate} onChange={e => setForm(f => ({ ...f, dueDate:e.target.value }))}
               style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14, boxSizing:"border-box" }} />
           </div>
         </div>
 
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:4 }}>RECURRENCE</label>
-        <select value={form.recurrence} onChange={e=>setForm(f=>({...f,recurrence:e.target.value}))}
+        <select value={form.recurrence} onChange={e => setForm(f => ({ ...f, recurrence:e.target.value }))}
           style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14, marginBottom:12 }}>
-          {Object.entries(RECURRENCE).map(([v,l])=><option key={v} value={v}>{l}</option>)}
+          {Object.entries(RECURRENCE).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
 
         <label style={{ fontSize:12, fontWeight:600, color:"#64748b", display:"block", marginBottom:8 }}>ASSIGN TO *</label>
@@ -99,8 +138,8 @@ export default function AssignJob({ kids, jobLibrary }) {
             const sel = form.kidIds.includes(k.id);
             const th  = THEMES[k.theme] || THEMES.rose;
             return (
-              <button key={k.id} onClick={()=>toggleKid(k.id)}
-                style={{ padding:"8px 16px", borderRadius:20, border:`2px solid ${sel?th.accent:"#e2e8f0"}`, background:sel?th.card:"#fff", cursor:"pointer", fontFamily:"Georgia,serif", fontWeight:sel?700:400, color:sel?th.text:"#475569", display:"flex", alignItems:"center", gap:6 }}>
+              <button key={k.id} onClick={() => toggleKid(k.id)}
+                style={{ padding:"8px 16px", borderRadius:20, border:`2px solid ${sel ? th.accent : "#e2e8f0"}`, background:sel ? th.card : "#fff", cursor:"pointer", fontFamily:"Georgia,serif", fontWeight:sel ? 700 : 400, color:sel ? th.text : "#475569", display:"flex", alignItems:"center", gap:6 }}>
                 <span>{k.avatar}</span>{k.name}
               </button>
             );

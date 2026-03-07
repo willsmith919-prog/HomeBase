@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { db } from "../../firebase";
-import { ref, push, update, remove } from "firebase/database";
+import { addJob, updateJob, deactivateJob } from "../../firestoreHelpers";
 
 const fmt = (n) => n ? `$${Number(n).toFixed(2)}` : "—";
 
@@ -12,17 +11,36 @@ export default function JobLibrary({ jobLibrary }) {
   const save = async () => {
     if (!form.title) return;
     if (editing) {
-      await update(ref(db, `jobLibrary/${editing}`), { ...form, value: Number(form.value) || 0 });
+      // NEW: updateJob takes the job ID and an object of fields to update
+      await updateJob(editing, {
+        title: form.title,
+        instructions: form.instructions,
+        defaultValue: Number(form.value) || 0
+      });
       setEditing(null);
     } else {
-      await push(ref(db, "jobLibrary"), { ...form, value: Number(form.value) || 0 });
+      // NEW: addJob creates a new document in Firestore
+      await addJob({
+        title: form.title,
+        instructions: form.instructions,
+        defaultValue: Number(form.value) || 0,
+        category: "uncategorized"
+      });
     }
     setForm(blank);
   };
 
   const startEdit = (j) => {
     setEditing(j.id);
-    setForm({ title:j.title, instructions:j.instructions||"", value:j.value||"" });
+    // NOTE: In Firestore, the field is "defaultValue" not "value"
+    setForm({ title:j.title, instructions:j.instructions||"", value:j.defaultValue||"" });
+  };
+
+  const handleDelete = async (jobId) => {
+    // NEW: We soft-delete (deactivate) instead of hard-deleting.
+    // The job stays in Firestore but won't show up in the list anymore
+    // because onJobLibraryChange only queries where active == true.
+    await deactivateJob(jobId);
   };
 
   return (
@@ -50,7 +68,7 @@ export default function JobLibrary({ jobLibrary }) {
             {editing ? "Update" : "Add to Library"}
           </button>
           {editing && (
-            <button onClick={()=>{setEditing(null);setForm(blank);}}
+            <button onClick={() => { setEditing(null); setForm(blank); }}
               style={{ padding:"9px 20px", borderRadius:8, border:"1px solid #e2e8f0", background:"#fff", fontFamily:"Georgia,serif", cursor:"pointer" }}>
               Cancel
             </button>
@@ -67,10 +85,11 @@ export default function JobLibrary({ jobLibrary }) {
                 <div style={{ fontWeight:600, color:"#1e293b" }}>{j.title}</div>
                 {j.instructions && <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{j.instructions}</div>}
               </div>
-              <span style={{ fontWeight:700, color:"#4f46e5", minWidth:48, textAlign:"right" }}>{fmt(j.value)}</span>
-              <button onClick={()=>startEdit(j)}
+              {/* NOTE: Field is now "defaultValue" in Firestore */}
+              <span style={{ fontWeight:700, color:"#4f46e5", minWidth:48, textAlign:"right" }}>{fmt(j.defaultValue)}</span>
+              <button onClick={() => startEdit(j)}
                 style={{ background:"#ede9fe", border:"none", borderRadius:6, padding:"4px 10px", cursor:"pointer", color:"#7c3aed", fontSize:12 }}>Edit</button>
-              <button onClick={()=>remove(ref(db,`jobLibrary/${j.id}`))}
+              <button onClick={() => handleDelete(j.id)}
                 style={{ background:"#fee2e2", border:"none", borderRadius:6, padding:"4px 10px", cursor:"pointer", color:"#dc2626", fontSize:12 }}>Del</button>
             </div>
           ))}

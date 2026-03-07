@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { db, auth } from "../../firebase";
-import { ref, onValue } from "firebase/database";
+import { auth } from "../../firebase";
+import { onKidsChange, onAssignmentsChange, onJobLibraryChange } from "../../firestoreHelpers";
 import { signOut } from "firebase/auth";
 import Dashboard from "./Dashboard";
 import AssignJob from "./AssignJob";
@@ -34,12 +34,12 @@ export default function ParentPortal({ user, onHome }) {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    const unsubs = [
-      onValue(ref(db, "kids"),       snap => setKids(snap.val()       ? Object.entries(snap.val()).map(([id,v])=>({id,...v})) : [])),
-      onValue(ref(db, "jobLibrary"), snap => setJobLibrary(snap.val() ? Object.entries(snap.val()).map(([id,v])=>({id,...v})) : [])),
-      onValue(ref(db, "assignments"),snap => setAssignments(snap.val()? Object.entries(snap.val()).map(([id,v])=>({id,...v})) : [])),
-    ];
-    return () => unsubs.forEach(u => u());
+    // NEW: Using Firestore real-time listeners instead of RTDB onValue.
+    // Each returns an unsubscribe function, same pattern as before.
+    const unsub1 = onKidsChange((kidsList) => setKids(kidsList));
+    const unsub2 = onJobLibraryChange((jobsList) => setJobLibrary(jobsList));
+    const unsub3 = onAssignmentsChange((assignmentsList) => setAssignments(assignmentsList));
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
 
   const activeTab = TABS.find(t => t.id === tab);
