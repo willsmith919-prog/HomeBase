@@ -23,11 +23,18 @@ function useIsMobile() {
   return isMobile;
 }
 
-// Get a human-readable recurrence label from the structured object
 function getRecurrenceLabel(recurrence) {
   if (!recurrence) return "One-time";
   if (typeof recurrence === "string") return RECURRENCE_LABELS[recurrence] || recurrence;
   return RECURRENCE_LABELS[recurrence.type] || recurrence.type || "One-time";
+}
+
+// Helper to check if an assignment is one-time (should be archived after completion)
+function isOneTime(assignment) {
+  const rec = assignment.recurrence;
+  if (!rec) return true;
+  if (typeof rec === "string") return rec === "once";
+  return rec.type === "once" || !rec.type;
 }
 
 export default function Assignments({ kids, assignments }) {
@@ -38,12 +45,9 @@ export default function Assignments({ kids, assignments }) {
   const [markingDoneId, setMarkingDoneId] = useState(null);
   const isMobile = useIsMobile();
 
-  // NEW: Assignments now have an "assignees" array instead of "kidId".
-  // When filtering, we check if the selected kid is in the assignees array.
   const filtered = assignments
     .filter(a => filterKid === "all" || (a.assignees && a.assignees.includes(filterKid)))
     .sort((a, b) => {
-      // Sort by title since we no longer have a simple dueDate on every assignment
       return (a.title || "").localeCompare(b.title || "");
     });
 
@@ -58,34 +62,35 @@ export default function Assignments({ kids, assignments }) {
   };
 
   const saveEdit = async (id) => {
-    // NEW: Using firestoreHelpers updateAssignment instead of RTDB update
     await updateAssignment(id, {
       title:        editForm.title,
       instructions: editForm.instructions,
       value:        Number(editForm.value) || 0,
-      // Update recurrence type while preserving other recurrence fields
       "recurrence.type": editForm.recurrence,
     });
     setEditingId(null);
   };
 
   const handleMarkComplete = async (assignment, kidId) => {
-    // NEW: Instead of flipping a boolean, create a completion record
+    // Create the completion record
     await markComplete({
       assignmentId: assignment.id,
       memberId: kidId,
       value: assignment.value
     });
+
+    // FIX: If this is a one-time job, archive it so it disappears
+    // from the active assignments list. Recurring jobs stay active.
+    if (isOneTime(assignment)) {
+      await archiveAssignment(assignment.id);
+    }
   };
 
   const deleteAssignment = async (id) => {
-    // NEW: Soft-delete by archiving instead of hard-deleting
     await archiveAssignment(id);
     setConfirmDeleteId(null);
   };
 
-  // Helper: get the first assigned kid for display purposes
-  // (assignments can now have multiple assignees)
   const getAssignedKids = (assignment) => {
     if (!assignment.assignees || assignment.assignees.length === 0) return [];
     return assignment.assignees
@@ -118,21 +123,19 @@ export default function Assignments({ kids, assignments }) {
           ? <EmptyState />
           : filtered.map(a => {
               const assignedKids = getAssignedKids(a);
-              // Use the first kid's theme for card styling
               const firstKid = assignedKids[0];
               const th = THEMES[firstKid?.theme] || THEMES.rose;
               const isEditing = editingId === a.id;
               const isConfirmingDelete = confirmDeleteId === a.id;
+              const oneTime = isOneTime(a);
 
               return (
                 <div key={a.id} style={{ background:"#fff", borderRadius:14, border:`1px solid ${th.light}`, overflow:"hidden" }}>
 
                   {/* Top row — info */}
                   <div style={{ display:"flex", alignItems:"center", padding:"14px 16px", gap:10 }}>
-                    {/* Status dot */}
                     <div style={{ width:12, height:12, borderRadius:"50%", flexShrink:0, background:th.accent }} />
 
-                    {/* Assigned kids — now shows all assignees */}
                     <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0, minWidth:70 }}>
                       {assignedKids.map(kid => (
                         <span key={kid.id} title={kid.name} style={{ fontSize:18 }}>{kid.avatar}</span>
@@ -143,7 +146,6 @@ export default function Assignments({ kids, assignments }) {
                       </span>
                     </div>
 
-                    {/* Job title + meta */}
                     <div style={{ flex:1, minWidth:0 }}>
                       <div style={{ fontWeight:600, color:"#1e293b", fontSize:14 }}>{a.title}</div>
                       <div style={{ fontSize:11, color:"#94a3b8", marginTop:2 }}>
@@ -152,7 +154,6 @@ export default function Assignments({ kids, assignments }) {
                       </div>
                     </div>
 
-                    {/* Value — always visible */}
                     <div style={{ fontWeight:700, color:th.accent, fontSize:16, flexShrink:0 }}>
                       {fmt(a.value)}
                     </div>
@@ -163,13 +164,12 @@ export default function Assignments({ kids, assignments }) {
                     <ActionBtn color="#dcfce7" textColor="#16a34a" onClick={() => {
                       const isMarking = markingDoneId === a.id;
                       setMarkingDoneId(isMarking ? null : a.id);
-                      // If only one kid assigned, skip the picker and mark done immediately
                       if (!isMarking && assignedKids.length === 1) {
                         handleMarkComplete(a, assignedKids[0].id);
                         setMarkingDoneId(null);
                       }
                     }} flex>
-                      ✓ Mark Done
+                      ✓ Mark Done{oneTime ? "" : " (today)"}
                     </ActionBtn>
                     <ActionBtn color="#ede9fe" textColor="#7c3aed" onClick={() => isEditing ? setEditingId(null) : startEdit(a)} flex>
                       {isEditing ? "Cancel Edit" : "✏️ Edit"}
@@ -179,7 +179,7 @@ export default function Assignments({ kids, assignments }) {
                     </ActionBtn>
                   </div>
 
-                  {/* Pick which kid completed it (only shows for multi-assignee chores) */}
+                  {/* Pick which kid completed it (multi-assignee) */}
                   {markingDoneId === a.id && assignedKids.length > 1 && (
                     <div style={{ padding:"10px 16px 14px", borderTop:"1px solid #dcfce7", background:"#f0fdf4", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
                       <span style={{ fontSize:13, color:"#16a34a", fontWeight:600 }}>Who completed it?</span>

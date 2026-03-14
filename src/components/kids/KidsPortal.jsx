@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
-import { onKidsChange, onAssignmentsChange, onTodaysCompletionsChange, markComplete } from "../../firestoreHelpers";
+import {
+  onKidsChange,
+  onAssignmentsChange,
+  onTodaysCompletionsChange,
+  onAvailableJobBoardChange,
+  markComplete,
+  archiveAssignment,
+  claimJobBoardPost
+} from "../../firestoreHelpers";
 
 const THEMES = {
   rose:    { bg:"#fff0f3", card:"#ffe4ea", accent:"#e11d48", light:"#fda4af", text:"#881337", grad:"linear-gradient(135deg,#fda4af,#e11d48)" },
@@ -16,13 +24,15 @@ export default function KidsPortal({ onHome }) {
   const [kids, setKids] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [todaysCompletions, setTodaysCompletions] = useState([]);
+  const [availableJobs, setAvailableJobs] = useState([]);
   const [selectedKid, setSelectedKid] = useState(null);
 
   useEffect(() => {
     const unsub1 = onKidsChange((kidsList) => setKids(kidsList));
     const unsub2 = onAssignmentsChange((assignmentsList) => setAssignments(assignmentsList));
     const unsub3 = onTodaysCompletionsChange((completionsList) => setTodaysCompletions(completionsList));
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub4 = onAvailableJobBoardChange((jobList) => setAvailableJobs(jobList));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   if (selectedKid) {
@@ -33,6 +43,7 @@ export default function KidsPortal({ onHome }) {
         kid={kid}
         assignments={assignments}
         todaysCompletions={todaysCompletions}
+        availableJobs={availableJobs}
         onBack={() => setSelectedKid(null)}
       />
     );
@@ -65,54 +76,55 @@ export default function KidsPortal({ onHome }) {
 }
 
 // ─── KidDashboard ────────────────────────────────────────────
-// KEY CHANGE: "completed" is no longer a boolean on the assignment.
-// Instead, we check the todaysCompletions array to see if this kid
-// has a completion record for a given assignment today.
-// For the "done" and "paid" tabs, we use completions data too.
-// ─────────────────────────────────────────────────────────────
 
-function KidDashboard({ kid, assignments, todaysCompletions, onBack }) {
+function KidDashboard({ kid, assignments, todaysCompletions, availableJobs, onBack }) {
   const th = THEMES[kid.theme] || THEMES.rose;
 
-  // NEW: Assignments now use an "assignees" array instead of "kidId"
-  // So we filter by checking if this kid's ID is in the assignees array
   const myJobs = assignments.filter(a => a.assignees && a.assignees.includes(kid.id));
 
-  // Check if a specific assignment was completed today by this kid
   const isCompletedToday = (assignmentId) => {
     return todaysCompletions.some(
       c => c.assignmentId === assignmentId && c.memberId === kid.id
     );
   };
 
-  // Split jobs into pending (not done today) and completed today
   const pending = myJobs.filter(a => !isCompletedToday(a.id));
   const completedToday = myJobs.filter(a => isCompletedToday(a.id));
-
-  // For "owed" and "paid" totals, we look at completion records
   const todaysOwed = completedToday.reduce((s, a) => s + Number(a.value), 0);
 
   const [tab, setTab] = useState("todo");
 
   const handleMarkDone = async (assignment) => {
-    // NEW: Instead of flipping a boolean on the assignment, we create
-    // a new completion record. The assignment stays active for next time.
     await markComplete({
       assignmentId: assignment.id,
       memberId: kid.id,
       value: assignment.value
     });
+
+    // Archive one-time jobs so they disappear from the To Do list.
+    // Recurring jobs stay active for next time.
+    const rec = assignment.recurrence;
+    const oneTime = !rec || rec.type === "once" || (typeof rec === "string" && rec === "once");
+    if (oneTime) {
+      await archiveAssignment(assignment.id);
+    }
   };
 
-  // Get recurrence label from the new structured recurrence object
+  const handleClaimJob = async (jobBoardId) => {
+    try {
+      await claimJobBoardPost(jobBoardId, kid.id);
+    } catch (err) {
+      // Job was likely already claimed by someone else
+      console.error("Claim failed:", err.message);
+    }
+  };
+
   const getRecurrenceLabel = (recurrence) => {
     if (!recurrence) return "One-time";
     if (typeof recurrence === "string") return RECURRENCE_LABELS[recurrence] || recurrence;
     return RECURRENCE_LABELS[recurrence.type] || recurrence.type || "One-time";
   };
 
-  // Get due date display — in the new schema, recurring chores don't have
-  // a single dueDate, so we show the recurrence instead
   const getDueInfo = (assignment) => {
     const rec = assignment.recurrence;
     if (!rec || rec.type === "once") {
@@ -145,17 +157,23 @@ function KidDashboard({ kid, assignments, todaysCompletions, onBack }) {
             <div style={{ color:"#fff", fontWeight:700, fontSize:18 }}>{fmt(todaysOwed)}</div>
           </div>
           <div style={{ textAlign:"center" }}>
-            <div style={{ color:"rgba(255,255,255,.7)", fontSize:11, marginBottom:2 }}>JOBS TODAY</div>
-            <div style={{ color:"#fff", fontWeight:700, fontSize:18 }}>{completedToday.length}</div>
+            <div style={{ color:"rgba(255,255,255,.7)", fontSize:11, marginBottom:2 }}>AVAILABLE</div>
+            <div style={{ color:"#fff", fontWeight:700, fontSize:18 }}>{availableJobs.length}</div>
           </div>
         </div>
       </div>
 
+      {/* Tabs — now with a third "Grab a Job" tab */}
       <div style={{ background:"#fff", display:"flex", borderBottom:`2px solid ${th.light}` }}>
-        {[["todo", "📋 To Do"], ["done", "✅ Done"]].map(([id, label]) => (
+        {[["todo", "📋 To Do"], ["board", "💰 Grab a Job"], ["done", "✅ Done"]].map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
             style={{ flex:1, padding:"12px 8px", border:"none", borderBottom:`3px solid ${tab === id ? th.accent : "transparent"}`, background:"none", cursor:"pointer", fontFamily:"Georgia,serif", fontWeight:tab === id ? 700 : 400, color:tab === id ? th.accent : "#64748b", fontSize:14 }}>
             {label}
+            {id === "board" && availableJobs.length > 0 && (
+              <span style={{ marginLeft:6, background:th.accent, color:"#fff", borderRadius:10, padding:"1px 7px", fontSize:11, fontWeight:700 }}>
+                {availableJobs.length}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -175,6 +193,23 @@ function KidDashboard({ kid, assignments, todaysCompletions, onBack }) {
           ))
         )}
 
+        {tab === "board" && (availableJobs.length === 0
+          ? <EmptyState emoji="📭" text="No extra jobs available right now — check back later!" />
+          : <>
+              <div style={{ background:th.card, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:13, color:th.text }}>
+                💡 Grab a job to add it to your To Do list and earn extra money!
+              </div>
+              {availableJobs.map(job => (
+                <BoardJobCard
+                  key={job.id}
+                  job={job}
+                  theme={th}
+                  onClaim={() => handleClaimJob(job.id)}
+                />
+              ))}
+            </>
+        )}
+
         {tab === "done" && (completedToday.length === 0
           ? <EmptyState emoji="📭" text="No completed jobs today yet." />
           : completedToday.map(a => (
@@ -192,6 +227,47 @@ function KidDashboard({ kid, assignments, todaysCompletions, onBack }) {
     </div>
   );
 }
+
+// ─── BoardJobCard (for the "Grab a Job" tab) ────────────────
+
+function BoardJobCard({ job, theme: th, onClaim }) {
+  const [confirming, setConfirming] = useState(false);
+
+  return (
+    <div style={{ background:"#fff", borderRadius:14, border:`2px solid ${th.light}`, marginBottom:12, overflow:"hidden" }}>
+      <div style={{ padding:"14px 16px", display:"flex", gap:12, alignItems:"center" }}>
+        <div style={{ width:40, height:40, borderRadius:10, background:th.card, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>
+          💰
+        </div>
+        <div style={{ flex:1 }}>
+          <div style={{ fontWeight:600, color:"#1e293b", fontSize:15 }}>{job.title}</div>
+          {job.instructions && <div style={{ fontSize:12, color:"#94a3b8", marginTop:2 }}>{job.instructions}</div>}
+        </div>
+        <div style={{ fontWeight:700, color:th.accent, fontSize:18 }}>{fmt(job.value)}</div>
+      </div>
+      <div style={{ padding:"0 16px 14px" }}>
+        {!confirming
+          ? <button onClick={() => setConfirming(true)}
+              style={{ width:"100%", padding:"10px", borderRadius:10, border:`2px solid ${th.accent}`, background:"#fff", color:th.accent, fontFamily:"Georgia,serif", fontWeight:700, fontSize:14, cursor:"pointer" }}>
+              ✋ I'll Do It!
+            </button>
+          : <div style={{ display:"flex", gap:8 }}>
+              <button onClick={onClaim}
+                style={{ flex:1, padding:"10px", borderRadius:10, border:"none", background:th.grad, color:"#fff", fontFamily:"Georgia,serif", fontWeight:700, cursor:"pointer" }}>
+                ✓ Yes, claim this job!
+              </button>
+              <button onClick={() => setConfirming(false)}
+                style={{ padding:"10px 16px", borderRadius:10, border:"1px solid #e2e8f0", background:"#fff", fontFamily:"Georgia,serif", cursor:"pointer" }}>
+                Cancel
+              </button>
+            </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+// ─── Existing components ─────────────────────────────────────
 
 function JobCard({ job, theme: th, getDueInfo, getRecurrenceLabel, onComplete }) {
   const [expanded, setExpanded] = useState(false);

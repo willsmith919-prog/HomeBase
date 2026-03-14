@@ -13,8 +13,6 @@ const THEMES = {
 const RECURRENCE = { once:"One-time", daily:"Daily", weekly:"Weekly", biweekly:"Bi-weekly", monthly:"Monthly" };
 const today = () => new Date().toISOString().slice(0, 10);
 
-// Convert the form's flat recurrence string + dueDate into the
-// structured recurrence object that Firestore expects
 function buildRecurrence(recurrenceType, dueDate) {
   const base = {
     type: recurrenceType || "once",
@@ -37,7 +35,7 @@ function buildRecurrence(recurrenceType, dueDate) {
     case "biweekly":
       if (dueDate) {
         const day = new Date(dueDate).getDay();
-        base.daysOfWeek = [day]; // Same day, just less frequent
+        base.daysOfWeek = [day];
       }
       break;
     case "monthly":
@@ -59,8 +57,18 @@ export default function AssignJob({ kids, jobLibrary }) {
 
   const pickLibrary = (id) => {
     const j = jobLibrary.find(x => x.id === id);
-    if (j) setForm(f => ({ ...f, fromLibrary:id, title:j.title, instructions:j.instructions||"" }));
-    else   setForm(f => ({ ...f, fromLibrary:"" }));
+    if (j) {
+      // FIX: Now also copies defaultValue into the form's value field
+      setForm(f => ({
+        ...f,
+        fromLibrary: id,
+        title: j.title,
+        instructions: j.instructions || "",
+        value: j.defaultValue || ""
+      }));
+    } else {
+      setForm(f => ({ ...f, fromLibrary:"" }));
+    }
   };
 
   const toggleKid = (id) => setForm(f => ({
@@ -70,9 +78,6 @@ export default function AssignJob({ kids, jobLibrary }) {
   const submit = async () => {
     if (!form.title || form.kidIds.length === 0) return;
 
-    // NEW: Instead of creating one RTDB record per kid with push(),
-    // we create one Firestore assignment with ALL selected kids in
-    // the assignees array. One chore, multiple assignees.
     await createAssignment({
       title:        form.title,
       instructions: form.instructions,
@@ -99,7 +104,7 @@ export default function AssignJob({ kids, jobLibrary }) {
         <select value={form.fromLibrary} onChange={e => pickLibrary(e.target.value)}
           style={{ width:"100%", border:"1px solid #e2e8f0", borderRadius:8, padding:"8px 12px", fontFamily:"Georgia,serif", fontSize:14 }}>
           <option value="">— start from scratch —</option>
-          {jobLibrary.map(j => <option key={j.id} value={j.id}>{j.title}</option>)}
+          {jobLibrary.map(j => <option key={j.id} value={j.id}>{j.title}{j.defaultValue ? ` (${fmt(j.defaultValue)})` : ""}</option>)}
         </select>
       </div>
 
@@ -154,3 +159,5 @@ export default function AssignJob({ kids, jobLibrary }) {
     </div>
   );
 }
+
+const fmt = (n) => n ? `$${Number(n).toFixed(2)}` : "—";

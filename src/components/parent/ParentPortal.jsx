@@ -6,12 +6,14 @@ import Dashboard from "./Dashboard";
 import AssignJob from "./AssignJob";
 import Assignments from "./Assignments";
 import JobLibrary from "./JobLibrary";
+import JobBoard from "./JobBoard";
 import FamilyManager from "./FamilyManager";
 
 const TABS = [
   { id:"dashboard",   label:"Dashboard",   icon:"📊" },
   { id:"assign",      label:"Assign",      icon:"📋" },
   { id:"assignments", label:"Assignments", icon:"📌" },
+  { id:"board",       label:"Job Board",   icon:"💰" },
   { id:"library",     label:"Library",     icon:"📚" },
   { id:"family",      label:"Family",      icon:"👨‍👩‍👧" },
 ];
@@ -34,8 +36,6 @@ export default function ParentPortal({ user, onHome }) {
   const isMobile = useIsMobile();
 
   useEffect(() => {
-    // NEW: Using Firestore real-time listeners instead of RTDB onValue.
-    // Each returns an unsubscribe function, same pattern as before.
     const unsub1 = onKidsChange((kidsList) => setKids(kidsList));
     const unsub2 = onJobLibraryChange((jobsList) => setJobLibrary(jobsList));
     const unsub3 = onAssignmentsChange((assignmentsList) => setAssignments(assignmentsList));
@@ -87,6 +87,7 @@ export default function ParentPortal({ user, onHome }) {
         {tab==="dashboard"   && <Dashboard    kids={kids} assignments={assignments} />}
         {tab==="assign"      && <AssignJob    kids={kids} jobLibrary={jobLibrary} />}
         {tab==="assignments" && <Assignments  kids={kids} assignments={assignments} />}
+        {tab==="board"       && <JobBoard     kids={kids} jobLibrary={jobLibrary} />}
         {tab==="library"     && <JobLibrary   jobLibrary={jobLibrary} />}
         {tab==="family"      && <FamilyManager kids={kids} />}
       </div>

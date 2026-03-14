@@ -3,7 +3,7 @@ import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import Login from "./components/auth/Login";
 import ParentPortal from "./components/parent/ParentPortal";
-import KidsPortal from "./components/kids/KidsPortal";
+import KidsPortal from "./components/kids/KidsPortal.jsx";
 import "./App.css";
 
 export default function App() {
