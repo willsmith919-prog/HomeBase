@@ -3,6 +3,7 @@ import {
   onKidsChange,
   onAssignmentsChange,
   onTodaysCompletionsChange,
+  onUnpaidCompletionsChange,
   onAvailableJobBoardChange,
   markComplete,
   archiveAssignment,
@@ -24,6 +25,7 @@ export default function KidsPortal({ onHome }) {
   const [kids, setKids] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [todaysCompletions, setTodaysCompletions] = useState([]);
+  const [unpaidCompletions, setUnpaidCompletions] = useState([]);
   const [availableJobs, setAvailableJobs] = useState([]);
   const [selectedKid, setSelectedKid] = useState(null);
 
@@ -32,7 +34,8 @@ export default function KidsPortal({ onHome }) {
     const unsub2 = onAssignmentsChange((assignmentsList) => setAssignments(assignmentsList));
     const unsub3 = onTodaysCompletionsChange((completionsList) => setTodaysCompletions(completionsList));
     const unsub4 = onAvailableJobBoardChange((jobList) => setAvailableJobs(jobList));
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+    const unsub5 = onUnpaidCompletionsChange((completionsList) => setUnpaidCompletions(completionsList));
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
   }, []);
 
   if (selectedKid) {
@@ -43,6 +46,7 @@ export default function KidsPortal({ onHome }) {
         kid={kid}
         assignments={assignments}
         todaysCompletions={todaysCompletions}
+        unpaidCompletions={unpaidCompletions}
         availableJobs={availableJobs}
         onBack={() => setSelectedKid(null)}
       />
@@ -77,7 +81,7 @@ export default function KidsPortal({ onHome }) {
 
 // ─── KidDashboard ────────────────────────────────────────────
 
-function KidDashboard({ kid, assignments, todaysCompletions, availableJobs, onBack }) {
+function KidDashboard({ kid, assignments, todaysCompletions, unpaidCompletions, availableJobs, onBack }) {
   const th = THEMES[kid.theme] || THEMES.rose;
 
   const myJobs = assignments.filter(a => a.assignees && a.assignees.includes(kid.id));
@@ -91,6 +95,11 @@ function KidDashboard({ kid, assignments, todaysCompletions, availableJobs, onBa
   const pending = myJobs.filter(a => !isCompletedToday(a.id));
   const completedToday = myJobs.filter(a => isCompletedToday(a.id));
   const todaysOwed = completedToday.reduce((s, a) => s + Number(a.value), 0);
+
+  // Total unpaid balance for this kid across all days
+  const unpaidBalance = unpaidCompletions
+    .filter(c => c.memberId === kid.id)
+    .reduce((s, c) => s + Number(c.value), 0);
 
   const [tab, setTab] = useState("todo");
 
@@ -147,18 +156,24 @@ function KidDashboard({ kid, assignments, todaysCompletions, availableJobs, onBa
             <div style={{ color:"rgba(255,255,255,.8)", fontSize:14 }}>{pending.length} jobs to do</div>
           </div>
         </div>
-        <div style={{ marginTop:16, background:"rgba(255,255,255,.15)", borderRadius:12, padding:"12px 16px", display:"flex", justifyContent:"space-between" }}>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ color:"rgba(255,255,255,.7)", fontSize:11, marginBottom:2 }}>TO EARN</div>
-            <div style={{ color:"#fff", fontWeight:700, fontSize:18 }}>{fmt(pending.reduce((s, a) => s + Number(a.value), 0))}</div>
+        {/* Unpaid balance — big and prominent */}
+        <div style={{ marginTop:16, background:"rgba(255,255,255,.2)", borderRadius:12, padding:"14px 16px", textAlign:"center" }}>
+          <div style={{ color:"rgba(255,255,255,.7)", fontSize:11, marginBottom:4, letterSpacing:1 }}>OWED TO YOU</div>
+          <div style={{ color:"#fff", fontWeight:700, fontSize:32 }}>{fmt(unpaidBalance)}</div>
+        </div>
+        {/* Secondary stats row */}
+        <div style={{ marginTop:8, display:"flex", justifyContent:"space-between", gap:8 }}>
+          <div style={{ flex:1, background:"rgba(255,255,255,.1)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ color:"rgba(255,255,255,.6)", fontSize:10, marginBottom:2 }}>TO EARN</div>
+            <div style={{ color:"#fff", fontWeight:700, fontSize:16 }}>{fmt(pending.reduce((s, a) => s + Number(a.value), 0))}</div>
           </div>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ color:"rgba(255,255,255,.7)", fontSize:11, marginBottom:2 }}>DONE TODAY</div>
-            <div style={{ color:"#fff", fontWeight:700, fontSize:18 }}>{fmt(todaysOwed)}</div>
+          <div style={{ flex:1, background:"rgba(255,255,255,.1)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ color:"rgba(255,255,255,.6)", fontSize:10, marginBottom:2 }}>DONE TODAY</div>
+            <div style={{ color:"#fff", fontWeight:700, fontSize:16 }}>{fmt(todaysOwed)}</div>
           </div>
-          <div style={{ textAlign:"center" }}>
-            <div style={{ color:"rgba(255,255,255,.7)", fontSize:11, marginBottom:2 }}>AVAILABLE</div>
-            <div style={{ color:"#fff", fontWeight:700, fontSize:18 }}>{availableJobs.length}</div>
+          <div style={{ flex:1, background:"rgba(255,255,255,.1)", borderRadius:10, padding:"10px 12px", textAlign:"center" }}>
+            <div style={{ color:"rgba(255,255,255,.6)", fontSize:10, marginBottom:2 }}>AVAILABLE</div>
+            <div style={{ color:"#fff", fontWeight:700, fontSize:16 }}>{availableJobs.length}</div>
           </div>
         </div>
       </div>
