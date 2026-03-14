@@ -93,8 +93,10 @@ function KidDashboard({ kid, assignments, todaysCompletions, unpaidCompletions, 
   };
 
   const pending = myJobs.filter(a => !isCompletedToday(a.id));
-  const completedToday = myJobs.filter(a => isCompletedToday(a.id));
-  const todaysOwed = completedToday.reduce((s, a) => s + Number(a.value), 0);
+
+  // Calculate from completions directly — assignments may be archived
+  const myCompletionsToday = todaysCompletions.filter(c => c.memberId === kid.id);
+  const todaysOwed = myCompletionsToday.reduce((s, c) => s + Number(c.value), 0);
 
   // Total unpaid balance for this kid across all days
   const unpaidBalance = unpaidCompletions
@@ -107,7 +109,8 @@ function KidDashboard({ kid, assignments, todaysCompletions, unpaidCompletions, 
     await markComplete({
       assignmentId: assignment.id,
       memberId: kid.id,
-      value: assignment.value
+      value: assignment.value,
+      title: assignment.title
     });
 
     // Archive one-time jobs so they disappear from the To Do list.
@@ -225,19 +228,26 @@ function KidDashboard({ kid, assignments, todaysCompletions, unpaidCompletions, 
             </>
         )}
 
-        {tab === "done" && (completedToday.length === 0
-          ? <EmptyState emoji="📭" text="No completed jobs today yet." />
-          : completedToday.map(a => (
-            <div key={a.id} style={{ background:"#fff", borderRadius:12, border:`1px solid ${th.light}`, padding:"14px 16px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
-              <span style={{ fontSize:24 }}>✅</span>
-              <div style={{ flex:1 }}>
-                <div style={{ fontWeight:600, color:"#1e293b" }}>{a.title}</div>
-                <div style={{ fontSize:12, color:"#94a3b8" }}>Completed today</div>
-              </div>
-              <span style={{ fontWeight:700, color:"#16a34a", fontSize:16 }}>{fmt(a.value)}</span>
-            </div>
-          ))
-        )}
+        {tab === "done" && (() => {
+          const myCompletionsToday = todaysCompletions.filter(c => c.memberId === kid.id);
+          return myCompletionsToday.length === 0
+            ? <EmptyState emoji="📭" text="No completed jobs today yet." />
+            : myCompletionsToday.map(c => {
+                // Try to get title from the completion record first,
+                // fall back to looking up the assignment (for older records)
+                const title = c.title || assignments.find(a => a.id === c.assignmentId)?.title || "Completed chore";
+                return (
+                  <div key={c.id} style={{ background:"#fff", borderRadius:12, border:`1px solid ${th.light}`, padding:"14px 16px", marginBottom:10, display:"flex", gap:12, alignItems:"center" }}>
+                    <span style={{ fontSize:24 }}>✅</span>
+                    <div style={{ flex:1 }}>
+                      <div style={{ fontWeight:600, color:"#1e293b" }}>{title}</div>
+                      <div style={{ fontSize:12, color:"#94a3b8" }}>Completed today</div>
+                    </div>
+                    <span style={{ fontWeight:700, color:"#16a34a", fontSize:16 }}>{fmt(c.value)}</span>
+                  </div>
+                );
+              });
+        })()}
       </div>
     </div>
   );

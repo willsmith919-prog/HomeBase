@@ -76,7 +76,8 @@ export default function Assignments({ kids, assignments }) {
     await markComplete({
       assignmentId: assignment.id,
       memberId: kidId,
-      value: assignment.value
+      value: assignment.value,
+      title: assignment.title
     });
 
     // FIX: If this is a one-time job, archive it so it disappears

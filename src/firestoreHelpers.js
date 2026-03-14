@@ -242,10 +242,11 @@ export async function archiveAssignment(assignmentId) {
 // COMPLETIONS
 // ============================================================
 
-export async function markComplete({ assignmentId, memberId, value }) {
+export async function markComplete({ assignmentId, memberId, value, title }) {
   return addDoc(completionsRef, {
     assignmentId,
     memberId,
+    title: title || '',
     completedAt: Timestamp.now(),
     verifiedBy: null,
     paid: false,
@@ -326,6 +327,14 @@ export async function markPaid(completionId) {
     paid: true,
     paidAt: Timestamp.now()
   });
+}
+
+// Delete a completion record (used for "uncomplete" / undo)
+export async function deleteCompletion(completionId) {
+  const completionDoc = doc(
+    database, 'families', FAMILY_ID, 'completions', completionId
+  );
+  return deleteDoc(completionDoc);
 }
 
 
