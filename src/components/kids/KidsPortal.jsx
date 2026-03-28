@@ -92,7 +92,7 @@ function KidDashboard({ kid, assignments, todaysCompletions, unpaidCompletions, 
     );
   };
 
-  const pending = myJobs.filter(a => !isCompletedToday(a.id));
+  const pending = myJobs.filter(a => !isCompletedToday(a.id)).sort((a, b) => Number(a.value) - Number(b.value));
 
   // Calculate from completions directly — assignments may be archived
   const myCompletionsToday = todaysCompletions.filter(c => c.memberId === kid.id);
@@ -217,7 +217,7 @@ function KidDashboard({ kid, assignments, todaysCompletions, unpaidCompletions, 
               <div style={{ background:th.card, borderRadius:10, padding:"10px 14px", marginBottom:14, fontSize:13, color:th.text }}>
                 💡 Grab a job to add it to your To Do list and earn extra money!
               </div>
-              {availableJobs.map(job => (
+              {[...availableJobs].sort((a, b) => Number(a.value) - Number(b.value)).map(job => (
                 <BoardJobCard
                   key={job.id}
                   job={job}
